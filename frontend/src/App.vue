@@ -16,11 +16,9 @@
         <label class="label">Alege un fisier WAV</label>
         <input type="file" accept=".wav" @change="handleFileChange" />
 
-        <div class="actions">
-          <button @click="uploadFile" :disabled="!selectedFile || loading">
-            {{ loading ? "Se proceseaza..." : "Incarca si analizeaza" }}
-          </button>
-        </div>
+        <button @click="uploadFile" :disabled="!selectedFile || loading">
+             {{ loadingButtonText }}
+        </button>
 
         <p v-if="selectedFile" class="info">
           Fisier selectat: {{ selectedFile.name }}
@@ -39,16 +37,26 @@
         </div>
 
         <div class="audio-grid">
-          <div class="audio-box" v-if="result.original_audio">
-            <h3>Inregistrare originala</h3>
-            <audio controls :src="mediaUrl(result.original_audio)"></audio>
-          </div>
+  <div class="audio-box" v-if="result.original_audio">
+    <h3>Inregistrare originala</h3>
+    <audio
+      ref="originalAudioRef"
+      controls
+      :src="mediaUrl(result.original_audio)"
+      @play="handleOriginalPlay"
+    ></audio>
+  </div>
 
-          <div class="audio-box" v-if="result.preview_audio">
-            <h3>Preview generat de aplicatie</h3>
-            <audio controls :src="mediaUrl(result.preview_audio)"></audio>
-          </div>
-        </div>
+  <div class="audio-box" v-if="result.preview_audio">
+    <h3>Preview generat de aplicatie</h3>
+    <audio
+      ref="previewAudioRef"
+      controls
+      :src="mediaUrl(result.preview_audio)"
+      @play="handlePreviewPlay"
+    ></audio>
+  </div>
+</div>
 
         <div class="downloads">
           <h3>Fisiere generate</h3>
@@ -116,17 +124,24 @@
 
   <div class="graph-grid">
     <div v-for="(img, index) in result.figures" :key="index" class="graph-box">
-      <img :src="mediaUrl(img)" />
-    </div>
+<img 
+  :src="mediaUrl(img)" 
+  :alt="'Grafic ' + (index + 1)"
+  @click="openImage(img)"
+  class="clickable-img"
+/>    </div>
   </div>
 </div>
       </section>
+      <div v-if="selectedImage" class="image-modal" @click="closeImage">
+  <img :src="mediaUrl(selectedImage)" class="modal-img" />
+</div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from "vue"
+import { ref, computed, watch, onBeforeUnmount } from "vue"
 import axios from "axios"
 
 const selectedFile = ref(null)
@@ -134,6 +149,16 @@ const loading = ref(false)
 const message = ref("")
 const error = ref("")
 const result = ref(null)
+
+const loadingDots = ref(".")
+let loadingInterval = null
+
+const originalAudioRef = ref(null)
+const previewAudioRef = ref(null)
+
+const loadingButtonText = computed(() => {
+  return loading.value ? `Se proceseaza${loadingDots.value}` : "Incarca si analizeaza"
+})
 
 function handleFileChange(event) {
   const file = event.target.files[0]
@@ -184,6 +209,61 @@ function downloadUrl(path) {
 
 function mediaUrl(path) {
   return `http://127.0.0.1:5000/api/media?path=${encodeURIComponent(path)}`
+}
+
+function startLoadingAnimation() {
+  loadingDots.value = "."
+  loadingInterval = setInterval(() => {
+    if (loadingDots.value === "...") {
+      loadingDots.value = "."
+    } else {
+      loadingDots.value += "."
+    }
+  }, 400)
+}
+
+function stopLoadingAnimation() {
+  if (loadingInterval) {
+    clearInterval(loadingInterval)
+    loadingInterval = null
+  }
+  loadingDots.value = "."
+}
+
+function handleOriginalPlay() {
+  if (previewAudioRef.value) {
+    previewAudioRef.value.pause()
+    previewAudioRef.value.currentTime = 0
+  }
+}
+
+function handlePreviewPlay() {
+  if (originalAudioRef.value) {
+    originalAudioRef.value.pause()
+    originalAudioRef.value.currentTime = 0
+  }
+}
+
+watch(loading, (newValue) => {
+  if (newValue) {
+    startLoadingAnimation()
+  } else {
+    stopLoadingAnimation()
+  }
+})
+
+onBeforeUnmount(() => {
+  stopLoadingAnimation()
+})
+
+const selectedImage = ref(null)
+
+function openImage(img) {
+  selectedImage.value = img
+}
+
+function closeImage() {
+  selectedImage.value = null
 }
 </script>
 
@@ -409,5 +489,35 @@ th {
   .graph-grid {
     grid-template-columns: 1fr;
   }
+}
+
+.clickable-img {
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.clickable-img:hover {
+  transform: scale(1.03);
+}
+
+/* Modal fullscreen */
+.image-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 999;
+}
+
+/* Imagine mare */
+.modal-img {
+  max-width: 90%;
+  max-height: 90%;
+  border-radius: 12px;
 }
 </style>

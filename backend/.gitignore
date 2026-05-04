@@ -1,0 +1,5 @@
+uploads/
+outputs/
+figures/
+__pycache__/
+node_modules/

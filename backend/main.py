@@ -1,11 +1,13 @@
 import os
-from cod_proiect import analyze_audio
+from analiza_audio import analyze_audio
 from export_partitura import export_sheet
 from audio_preview import generate_preview_audio
 
 # Calea catre MuseScore, folosita pentru exportul PDF
-MUSESCORE_PATH = r"C:\Program Files\MuseScore 4\bin\MuseScore4.exe"
-
+MUSESCORE_PATH = os.environ.get(
+    "MUSESCORE_PATH",
+    r"C:\Program Files\MuseScore 4\bin\MuseScore4.exe"
+)
 
 def run_pipeline(audio_path, output_dir="outputs", save_plots=False,
                  export_pdf=True, export_midi=True, musescore_path=MUSESCORE_PATH):

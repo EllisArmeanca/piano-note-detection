@@ -1,3 +1,5 @@
+#serverul flask , legatura dintre pipeline si vue
+#primim fisierul audio, il salvam, rulam pipelineul si trimitem rezultatele catre frontend
 import os
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
@@ -25,7 +27,7 @@ def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-@app.route("/api/process", methods=["POST"])
+@app.route("/api/process", methods=["POST"]) # Endpoint-ul principal al aplicatiei / aici frontend-ul trimite fisierul WAV prin POST
 def process_audio():
     # Verifica daca a fost trimis un fisier
     if "file" not in request.files:
@@ -55,7 +57,7 @@ def process_audio():
 
     try:
         # Rulam pipeline-ul complet
-        results = run_pipeline(
+        results = run_pipeline( #din main.py
             audio_path=input_path,
             output_dir=output_dir,
             save_plots=True,
@@ -93,7 +95,7 @@ def process_audio():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/download", methods=["GET"])
+@app.route("/api/download", methods=["GET"]) #endpoint pt descarcarea fisierelor xml, pdf si midi
 def download_file():
     # Primeste calea fisierului prin query parameter
     file_path = request.args.get("path")
@@ -107,7 +109,7 @@ def download_file():
     return send_file(file_path, as_attachment=True)
 
 
-@app.route("/api/media", methods=["GET"])
+@app.route("/api/media", methods=["GET"]) #endpoint pt redarea playerelor
 def stream_media():
     # Trimite fisierul catre browser pentru playerul audio
     file_path = request.args.get("path")

@@ -1,6 +1,6 @@
 import os
 import subprocess
-from music21 import stream, note, meter, tempo, metadata
+from music21 import stream, note, meter, tempo, metadata, layout, clef
 
 # Semnatura de timp folosita in partitura
 TIME_SIGNATURE = "4/4"
@@ -33,7 +33,7 @@ def quantize_duration(duration_sec, bpm, allowed_values):
         if diff < best_diff:
             best_diff = diff
             best_val = val
-
+    #selectez ce amai buna diferenta
     return best_val
 
 
@@ -58,6 +58,7 @@ def export_pdf_with_musescore(musicxml_file, pdf_file, musescore_path):
 
 def export_sheet(final_notes, bpm, base_name="output", output_dir="outputs",
                  export_pdf=False, musescore_path=None, export_midi=True):
+
     # Creeaza folderul de output daca nu exista deja
     os.makedirs(output_dir, exist_ok=True)
 
@@ -69,6 +70,23 @@ def export_sheet(final_notes, bpm, base_name="output", output_dir="outputs",
     # Cream obiectul principal de tip Score
     score = stream.Score()
 
+    # Dimensiune pagina si margini folosite la exportul MUSICXML
+    score.insert(0, layout.PageLayout(
+        pageHeight=900,
+        pageWidth=1200,
+        topMargin=25,
+        bottomMargin=25,
+        leftMargin=25,
+        rightMargin=25
+    ))
+
+    # Distanta intre randurile partiturii (systems)
+    score.insert(0, layout.SystemLayout(
+        systemDistance=35,
+        staffDistance=35
+    ))
+
+
     # Adaugam metadate simple
     score.metadata = metadata.Metadata()
     score.metadata.title = f"Detected Piano Notes - {base_name}"
@@ -76,6 +94,9 @@ def export_sheet(final_notes, bpm, base_name="output", output_dir="outputs",
 
     # Cream o singura partitura/instrument
     part = stream.Part()
+
+    # Adaugam cheia sol explicit 
+    part.append(clef.TrebleClef())
 
     # Adaugam tempo-ul estimat si masura
     part.append(tempo.MetronomeMark(number=round(bpm)))
@@ -85,6 +106,7 @@ def export_sheet(final_notes, bpm, base_name="output", output_dir="outputs",
 
     # Parcurgem notele detectate si le adaugam in partitura
     for note_name, f0, start_time, end_time, duration_sec in final_notes:
+
         # Distanta dintre nota curenta si nota precedenta
         gap_sec = start_time - prev_end_time
 
@@ -104,6 +126,19 @@ def export_sheet(final_notes, bpm, base_name="output", output_dir="outputs",
 
     # Adaugam part-ul in score
     score.append(part)
+
+    # -----------
+    # MASURI + COMPACTARE
+    # -----------
+
+    # Creeaza masuri reale (bar lines)
+    score.makeMeasures(inPlace=True)
+
+    # Micsoram latimea masurilor => mai multe incap pe un rand
+    for m in score.recurse().getElementsByClass(stream.Measure):
+        m.layoutWidth = 55   
+
+    # -----------
 
     # Export MusicXML
     score.write("musicxml", fp=musicxml_file)

@@ -1,3 +1,6 @@
+# Monophonic piano note analysis: waveform, spectrogram, F0 detection, onsets, notes + durations
+
+#importuri:
 import os
 from scipy.io.wavfile import read
 from scipy.signal import medfilt
@@ -10,13 +13,17 @@ import matplotlib.pyplot as plt
 import librosa
 import librosa.display
 
-
+#detectarea varfurilor
 def detect_peaks(mag_spectrum, threshold_ratio=0.3):
     peaks = []
     mags = []
 
+    # Threshold to ignore small values / noise
+
     thr = threshold_ratio * np.max(mag_spectrum)
 
+    # ne uitam pe spectru, fara primul si ultimul element
+    #maxim local, verificam daca e peste threshold
     for k in range(1, len(mag_spectrum) - 1):
         if mag_spectrum[k] > mag_spectrum[k - 1] and mag_spectrum[k] > mag_spectrum[k + 1]:
             if mag_spectrum[k] > thr:
@@ -26,22 +33,23 @@ def detect_peaks(mag_spectrum, threshold_ratio=0.3):
     return peaks, mags
 
 
+#functie hps - estimeaza f0 folosind HPS
 def hps_f0(mag_spectrum, fs, harmonics=5):
-    spectrum = mag_spectrum.copy()
+    spectrum = mag_spectrum.copy() # spectrul de magnitudine
     n_bins = len(spectrum)
 
-    hps = spectrum.copy()
+    hps = spectrum.copy() # initializam hps  cu spectrul original
 
-    for h in range(2, harmonics + 1):
+    for h in range(2, harmonics + 1): # Multiply with downsampled
         down = spectrum[::h]
         hps[:len(down)] *= down
 
-    idx = np.argmax(hps)
-    f0 = idx * (fs / 2) / (n_bins - 1)
+    idx = np.argmax(hps) # Index of maximum in HPS
+    f0 = idx * (fs / 2) / (n_bins - 1) # Convertim varful indexului to frequency
 
     return f0
 
-
+# bpm-ul este estimat pe baza distantei dintre onseturi 
 def estimate_bpm(onsets, hop_size, fs):
     hop_time = hop_size / fs
     onset_times = [o * hop_time for o in onsets]
@@ -61,29 +69,7 @@ def estimate_bpm(onsets, hop_size, fs):
     bpm = 60.0 / beat_duration
     return bpm
 
-
-def merge_consecutive_same_notes(final_notes):
-    if len(final_notes) == 0:
-        return []
-
-    merged = [list(final_notes[0])]
-
-    for i in range(1, len(final_notes)):
-        note_name, f0, st, en, dur = final_notes[i]
-
-        prev_note_name, prev_f0, prev_st, prev_en, prev_dur = merged[-1]
-
-        if note_name == prev_note_name:
-            new_end = en
-            new_dur = new_end - prev_st
-            new_f0 = (prev_f0 + f0) / 2.0
-
-            merged[-1] = [prev_note_name, new_f0, prev_st, new_end, new_dur]
-        else:
-            merged.append([note_name, f0, st, en, dur])
-
-    return [tuple(x) for x in merged]
-
+#functie principala de analiza audio 
 
 def analyze_audio(audio_path, save_plots=True):
     fn = os.path.splitext(os.path.basename(audio_path))[0]
@@ -93,9 +79,14 @@ def analyze_audio(audio_path, save_plots=True):
     frame_size = 2048
     hop_size = 512
 
-    # ======================
+    # -------
     # 1. LOAD + PREPROCESS
-    # ======================
+    # ----------
+    #PSEUDOCOD:
+    # 1. Citim fisierul audio WAV.
+    # 2. Convertim la mono daca fisierul este stereo.
+    # 3. Normalizam semnalul.
+
 
     fs, x = read(audio_path)
     print("Sampling rate:", fs)
@@ -114,10 +105,14 @@ def analyze_audio(audio_path, save_plots=True):
 
     t = np.arange(x.size) / float(fs)
 
-    # ======================
+    # -----------
     # 2. WAVEFORM PLOTS
-    # ======================
+    # -----------
+    #PSEUDOCOD: 
+    # 4. Generam waveform si spectrograma.
 
+
+    #plot clasic cu matplotlib si plot cu librosa
     if save_plots:
         plt.figure(figsize=(10, 4))
         plt.plot(t, x)
@@ -137,12 +132,14 @@ def analyze_audio(audio_path, save_plots=True):
         plt.savefig(os.path.join(fig_base_dir, "waveform_librosa.png"), dpi=300)
         plt.close()
 
-    # ======================
+    # -----------
     # 3. SPECTROGRAM (STFT)
-    # ======================
+    # -----------
 
     stft = librosa.stft(x, n_fft=4096, hop_length=256, window="hann")
     spectrogram_db = librosa.amplitude_to_db(np.abs(stft), ref=np.max)
+   
+    # Display spectrogram: time on x-axis, log-frequency on y-axis.
 
     if save_plots:
         plt.figure(figsize=(10, 4))
@@ -160,12 +157,14 @@ def analyze_audio(audio_path, save_plots=True):
         plt.savefig(os.path.join(fig_base_dir, "spectrogram_librosa.png"), dpi=300)
         plt.close()
 
-    # ======================
+    # -----------
     # 4. FRAME + FFT
-    # ======================
+    # -----------
 
+    # window hann pentru spectral leakage
     window = np.hanning(frame_size)
-    fft_frames = []
+    fft_frames = [] # spectrul de magnitudine pe fiecare fereastra.
+
 
     num_frames = 1 + int((len(x) - frame_size) / hop_size)
 
@@ -173,20 +172,23 @@ def analyze_audio(audio_path, save_plots=True):
         start = i * hop_size
         end = start + frame_size
 
-        frame = x[start:end]
-        frame = frame * window
+        frame = x[start:end] #extragem frame
+        frame = frame * window #aplicam hann
 
-        X = np.fft.rfft(frame)
+        X = np.fft.rfft(frame) #real fft
         fft_frames.append(np.abs(X))
 
-    fft_frames = np.array(fft_frames)
+    fft_frames = np.array(fft_frames) # *num_frames, num_bins)
     freqs_per_bin = np.linspace(0, fs / 2, fft_frames.shape[1])
 
     print("Number of frames:", fft_frames.shape[0])
 
-    # ======================
+    # -----------
     # 5. PEAK DETECTION
-    # ======================
+    # -----------
+    #PSEUDOCOD:
+    # 5. Impartim semnalul in frame-uri.
+    # 6. Aplicam fereastra Hann si FFT pe fiecare frame.
 
     peak_freqs = []
     peak_mags = []
@@ -199,17 +201,22 @@ def analyze_audio(audio_path, save_plots=True):
     if len(peak_freqs) > 0 and len(peak_freqs[0]) > 0:
         print("First frame peak freqs (Hz):", peak_freqs[0][:10])
 
-    # ======================
+    # -----------
     # 6. F0 (HPS)
-    # ======================
+    # -----------
+    #PSEUDOCOD:
+    # 7. Estimam F0 folosind HPS.
+
 
     f0_per_frame = np.array([hps_f0(mag, fs) for mag in fft_frames])
 
     print("First 20 raw f0 estimates:", f0_per_frame[:20])
 
-    # ======================
+    # -----------
     # 7. SMOOTHING
-    # ======================
+    # -----------
+    #PSEUDOCOD: # 8. Netezim valorile F0 cu filtrare mediana.
+
 
     f0_smooth = medfilt(f0_per_frame, kernel_size=5)
 
@@ -223,23 +230,27 @@ def analyze_audio(audio_path, save_plots=True):
         plt.savefig(os.path.join(fig_base_dir, "f0_smoothing.png"), dpi=300)
         plt.close()
 
-    # ======================
+    # -----------
     # 8. ONSET DETECTION
-    # ======================
+    # -----------
+    #PSEUDOCOD: # 9. Detectam onset-uri folosind spectral flux.
 
+
+    # Spectral flux measures how much the spectrum changes between consecutive frames.
+    # Onsets usually correspond to large positive changes in the spectrum.
     spectral_flux = []
 
     for i in range(1, len(fft_frames)):
-        diff = fft_frames[i] - fft_frames[i - 1]
-        diff[diff < 0] = 0
-        spectral_flux.append(np.sum(diff))
+        diff = fft_frames[i] - fft_frames[i - 1] # diff intre actual si precedent
+        diff[diff < 0] = 0 # pastram doar dif pozitive
+        spectral_flux.append(np.sum(diff)) # Spectral flux = sum of positive changes
 
     spectral_flux = np.array(spectral_flux)
 
     max_flux = np.max(spectral_flux)
     if max_flux > 0:
-        spectral_flux = spectral_flux / max_flux
-
+        spectral_flux = spectral_flux / max_flux # normalizare
+ 
     if save_plots:
         plt.figure(figsize=(12, 4))
         plt.plot(spectral_flux)
@@ -248,14 +259,20 @@ def analyze_audio(audio_path, save_plots=True):
         plt.savefig(os.path.join(fig_base_dir, "spectral_flux.png"), dpi=300)
         plt.close()
 
+# Threshold for spectral flux peaks.
+# Lower value (=0.2) is more sensitive, detects softer onsets.
     threshold = 0.2
     onsets = []
+
+    # We detect local maxima in the spectral flux that are above threshold.
 
     for i in range(1, len(spectral_flux) - 1):
         if spectral_flux[i] > threshold:
             if spectral_flux[i] > spectral_flux[i - 1] and spectral_flux[i] > spectral_flux[i + 1]:
                 onsets.append(i)
 
+    # For safety, we always include the first frame as an onset
+    # so that the first note is not missed.
     if 0 not in onsets:
         onsets.insert(0, 0)
 
@@ -264,12 +281,14 @@ def analyze_audio(audio_path, save_plots=True):
     bpm_est = estimate_bpm(onsets, hop_size, fs)
     print("Estimated BPM:", round(bpm_est, 2))
 
-    # ======================
+    # -----------
     # 9. NOTE SEGMENTATION
-    # ======================
+    # -----------
+    #PSEUDOCOD: # 10. Segmentam notele intre onset-uri consecutive.
 
-    notes = []
-    hop_time = hop_size / fs
+    # fiecare nota intre doua onset consecutive
+    notes = [] # list of (f0_note, start_time, end_time, duration)
+    hop_time = hop_size / fs # seconds per frame
 
     onsets_with_end = onsets + [len(f0_smooth)]
 
@@ -280,7 +299,9 @@ def analyze_audio(audio_path, save_plots=True):
         if end_f <= start_f:
             continue
 
+        # Extract F0 values
         f0_segment = f0_smooth[start_f:end_f]
+        # Remove zero or very low F0 values
         f0_segment = f0_segment[f0_segment > 10]
 
         if len(f0_segment) == 0:
@@ -288,13 +309,12 @@ def analyze_audio(audio_path, save_plots=True):
 
         f0_note = np.median(f0_segment)
 
+        # frame -> time conversion
         start_time = start_f * hop_time
         end_time = end_f * hop_time
         duration = end_time - start_time
 
-        # Ignore very early noise at the start of the recording
-        if start_time < 0.15:
-            continue
+      
 
         # Ignore very short segments
         if duration < 0.08:
@@ -310,9 +330,11 @@ def analyze_audio(audio_path, save_plots=True):
     for idx, (f0, st, en, dur) in enumerate(notes):
         print(f"Note {idx + 1}: f0={f0:.2f} Hz | start={st:.2f}s | end={en:.2f}s | dur={dur:.2f}s")
 
-    # ======================
+    # -----------
     # 10. MAP F0 -> MIDI NOTE
-    # ======================
+    # -----------
+    #PSEUDOCOD: # 11. Convertim frecventele F0 in note MIDI.
+
 
     note_names = ["C", "C#", "D", "D#", "E", "F",
                   "F#", "G", "G#", "A", "A#", "B"]
@@ -320,17 +342,21 @@ def analyze_audio(audio_path, save_plots=True):
     final_notes = []
 
     for (f0, st, en, dur) in notes:
+
+    # Convert frequency (Hz) to MIDI note number.
+    # Formula: midi = 69 + 12 * log2(f0 / 440)
         midi = 69 + 12 * np.log2(f0 / 440.0)
         midi = int(round(midi))
 
+    # Get note name and octave from MIDI number
         name = note_names[midi % 12]
         octave = midi // 12 - 1
         note_full = f"{name}{octave}"
 
         final_notes.append((note_full, f0, st, en, dur))
 
-    # Do not merge repeated notes
-    # final_notes = merge_consecutive_same_notes(final_notes)
+
+    #PSEUDOCOD: 12. Returnam notele finale si BPM-ul estimat.
 
     print("\n=== DETECTED NOTES ===")
     for idx, (note_txt, f0, st, en, dur) in enumerate(final_notes):
